@@ -20,6 +20,20 @@
 This file contains the list of changes made to joulescope_event_analyzer.
 
 
+## 0.1.1
+
+2026 Nov 16
+
+* Fixed event tails biasing the sleep current.  A slowly decaying tail fills
+  the current histogram between sleep and the event, so the sleep level
+  region had no valley to stop at and included tail blocks.  The sleep
+  current and noise read high, which raised the detection thresholds and
+  cut the tails short.  On hardware (an ADP3450 driving a JS320 with a 2 ms
+  exponential tail), sleep read 7 % high and events lost 5 % of their
+  charge.  The sleep current and noise now come from the blocks within
+  5 robust sigmas of the median of the level region.
+
+
 ## 0.1.0
 
 2026 Nov 16

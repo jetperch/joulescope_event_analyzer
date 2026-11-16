@@ -86,6 +86,13 @@ Pipeline (`analyze.analyze`): `estimate_sleep` (pass 1 over data) ->
   1 nA). A fixed log scale cannot represent a device that is off (block means
   around 0 A, some negative); a fixed 1 nA asinh scale splits a noisy zero
   level into two peaks.
+- **Sleep core** (`sleep._robust_core`, 0.1.1): the sleep level and noise
+  use only blocks within `CORE_SIGMAS` (5) robust sigmas (median, MAD) of the
+  chosen region, iterated.  A slow event tail fills the histogram up to the
+  event with no valley, so the region can reach far above sleep; a plain
+  mean and std then read high, the thresholds rise, and tails get cut.
+  Found on hardware: 2 ms tail, sleep +7 %, charge -5 %.
+  `test_event_tails_do_not_bias_sleep` guards it.
 - **Valley walk** (`sleep._walk`): a level's histogram region stops only at a
   real valley (below half the peak, then rising 25 %), not at noise bumps.
   Otherwise sparse histograms truncate one side and bias the level.
@@ -144,7 +151,7 @@ Pipeline (`analyze.analyze`): `estimate_sleep` (pass 1 over data) ->
 
 ```
 pip install -e ".[dev]"
-python -m pytest                      # 127 tests, ~5 s
+python -m pytest                      # 128 tests, ~5 s
 python -m coverage run -m pytest && python -m coverage report   # ~97 %
 python -m reuse lint                  # note: run after a commit, or delete __pycache__ first;
                                       # with no commits reuse cannot apply .gitignore
@@ -178,6 +185,29 @@ Default settings, version 0.1.0:
 - C: other levels at 0.25 µA and 5.4 µA (brief dips) explain the negative
   unattributed charge; 427 short events (type B, 168 nC) are 15 % of charge.
 - Runtime: C (14.6 M samples, 540 events) about 2.3 s.
+
+
+## Hardware validation (0.1.1)
+
+ADP3450 W2 -> 100 ohm -> JS320 current, playing repeating custom waveforms
+with known events; JS320 at 1 MHz and 50 kHz.  The harness lives outside
+this public repo (it needs the private ADP3450 wrapper).  Results with 0.1.1:
+
+- One type, three interleaved types, amplitude jitter, 0.3 uC and 12 nC
+  events: right types, exact counts and periods, excess charge within 1 %
+  of the raw-data integral.
+- Merge gap: pulses 100 us apart merge, 600 us apart stay separate.
+- 2 ms exponential tail: sleep, charge and duration match the raw data
+  (0.1.0 read sleep +7 %, charge -5 %, duration 5.8 of 12.5 ms).
+- 1 MHz vs 50 kHz: same types and counts, charge within 0.02 %.  The Sinc3
+  model predicts the 50 kHz peak current within +0.4 to +5.6 %, so
+  `i_peak` can read `differs` instead of `bandwidth` for short spikes.
+- Known sensitivities: +/-20 % amplitude variation of one shape is near the
+  match tolerance and may split into two types; many tiny near-threshold
+  events (for example instrument step transients) split into many types.
+
+The reference results below are from 0.1.0; 0.1.1 changes the sleep level
+only where the level region includes non-sleep blocks.
 
 
 ## Integration with battery-life estimation

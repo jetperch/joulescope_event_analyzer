@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __title__ = 'joulescope_event_analyzer'
 __description__ = 'Find, measure and compare current events in Joulescope captures.'
 __url__ = 'https://github.com/jetperch/joulescope_event_analyzer'

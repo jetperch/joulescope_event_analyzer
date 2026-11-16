@@ -133,3 +133,24 @@ def test_estimate_round_trip_and_charge_noise(capture):
     assert e2.level == e.level
     assert e2.levels[0].current == e.levels[0].current
     assert e.charge_noise(1e-3, capture.fs) < e.charge_noise(1e-2, capture.fs)
+
+
+def test_event_tails_do_not_bias_sleep():
+    """A slow exponential tail fills the histogram from sleep up to the event.
+
+    Found on hardware (ADP3450 into a JS320): sleep read 7 % high, which
+    raised the thresholds and cut the tails, losing 5 % of the event charge.
+    """
+    from joulescope_event_analyzer import analyze
+    from joulescope_event_analyzer.synthetic import Shape
+    fs, sleep = 200_000, 200e-6
+    shape = Shape('tail', segments=[(0.5e-3, 8e-3)], tail=(4e-3, 2e-3))
+    cap = Capture(duration=2.0, fs=fs, sleep=sleep, noise=0.5e-6, seed=3)
+    cap.add_periodic(shape, period=0.125, phase=0.03)
+    e = estimate_sleep(cap.source())
+    assert e.level == pytest.approx(sleep, rel=0.005)
+    assert e.noise_detect < 5e-6
+    r = analyze(cap.source())
+    assert len(r.types) == 1
+    assert r.types[0].stats['excess_charge']['mean'] == pytest.approx(shape.charge(fs), rel=0.01)
+    assert abs(r.budget['unattributed_fraction']) < 0.002

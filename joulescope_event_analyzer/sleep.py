@@ -47,6 +47,7 @@ from ._util import moving_average
 MIN_SCALE = 1e-9      # A, minimum asinh scale (linear below, logarithmic above)
 BIN_WIDTH = 0.02       # asinh units per histogram bin (about 2 % of current when logarithmic)
 MAX_BLOCKS = 2_000_000
+CORE_SIGMAS = 5.0     # sleep level and noise use blocks within this many robust sigmas of the median
 
 
 @dataclass
@@ -206,6 +207,32 @@ def _walk(sm, taken, p, direction):
     return k
 
 
+def _robust_core(x, k=CORE_SIGMAS, iterations=10):
+    """Return the mask of x within k robust sigmas of its median, iterated.
+
+    A level region can include blocks that are not at the level, such as a
+    slowly decaying event tail that fills the histogram between sleep and
+    the event with no valley.  Those blocks would bias a plain mean and
+    standard deviation upward.  The median and MAD ignore them.
+    """
+    mask = np.isfinite(x)
+    for _ in range(iterations):
+        v = x[mask]
+        if len(v) < 3:
+            break
+        med = float(np.median(v))
+        sigma = 1.4826 * float(np.median(np.abs(v - med)))
+        if sigma <= 0.0:
+            sigma = float(np.std(v))
+        if sigma <= 0.0:
+            break
+        new = np.isfinite(x) & (np.abs(x - med) <= k * sigma)
+        if np.array_equal(new, mask) or new.sum() < 3:
+            break
+        mask = new
+    return mask
+
+
 def _find_levels(log_values, min_fraction):
     """Find dwell levels as prominent peaks in the asinh-scaled current histogram.
 
@@ -293,6 +320,9 @@ def estimate_sleep(source, cfg: SleepConfig | None = None, smooth: float = 10e-6
     lo, hi = raw_levels[idx][0], raw_levels[idx][1]
     in_sleep = np.zeros(len(means), dtype=bool)
     in_sleep[valid] = (logv >= lo) & (logv < hi)
+    # level and noise from the core of the region, so event tails do not bias them
+    in_sleep[in_sleep] = _robust_core(means[in_sleep])
+    levels[idx].current = float(means[in_sleep].mean())
 
     level = float(means[in_sleep].mean())
     noise_sample = float(np.sqrt(np.median(var_raw[in_sleep])))
